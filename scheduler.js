@@ -139,8 +139,7 @@ function reloadScheduler() {
       const task = cron.schedule(cronExpr, () => {
         executeEvent(event);
       }, {
-        scheduled: true,
-        timezone: 'America/Mexico_City',
+        scheduled: true
       });
       
       activeTasks.set(event.id, task);
