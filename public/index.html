@@ -1,330 +1,36 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="Sistema de tareas programadas con scheduler inteligente para Termux" />
-  <title>⚡ TaskFlow — Scheduler Pro</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css" />
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Termux Scheduler V2</title>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <!-- ═══ Ambient background effects ══════════════════════════════════════ -->
-  <div class="bg-orbs">
-    <div class="orb orb-1"></div>
-    <div class="orb orb-2"></div>
-    <div class="orb orb-3"></div>
-  </div>
+    <div class="container">
+        <header>
+            <h1>⚡ TaskFlow V2</h1>
+            <p>Estado del Latido: <span id="status">Desconectado</span></p>
+        </header>
 
-  <!-- ═══ Sidebar ════════════════════════════════════════════════════════ -->
-  <div class="sidebar-overlay" id="sidebar-overlay" onclick="toggleSidebar()"></div>
-  <aside class="sidebar" id="sidebar">
-    <div class="sidebar-logo">
-      <div class="logo-icon">⚡</div>
-      <div class="logo-text">
-        <span class="logo-title">TaskFlow</span>
-        <span class="logo-sub">Scheduler Pro</span>
-      </div>
+        <section class="actions">
+            <button onclick="testNotification()" class="btn-test">🔔 Probar Notificación</button>
+        </section>
+
+        <section class="log-container">
+            <h3>Terminal de Eventos</h3>
+            <div id="log-window" class="log-window"></div>
+        </section>
+
+        <section class="new-task">
+            <h3>Programar Tarea Rápida</h3>
+            <div class="form">
+                <input type="text" id="task-name" placeholder="Nombre (Ej: Beber agua)">
+                <input type="time" id="task-time" value="08:00">
+                <button onclick="addTask()" class="btn-add">+ Programar</button>
+            </div>
+        </section>
     </div>
-
-    <nav class="sidebar-nav">
-      <button class="nav-item active" data-view="dashboard" id="nav-dashboard">
-        <span class="nav-icon">🏠</span>
-        <span>Dashboard</span>
-      </button>
-      <button class="nav-item" data-view="events" id="nav-events">
-        <span class="nav-icon">📅</span>
-        <span>Eventos</span>
-        <span class="nav-badge" id="nav-events-count">0</span>
-      </button>
-      <button class="nav-item" data-view="logs" id="nav-logs">
-        <span class="nav-icon">📋</span>
-        <span>Logs</span>
-        <span class="nav-badge live-badge" id="nav-logs-badge">EN VIVO</span>
-      </button>
-    </nav>
-
-    <!-- Status indicator -->
-    <div class="sidebar-status">
-      <div class="status-dot" id="ws-status-dot"></div>
-      <span class="status-text" id="ws-status-text">Conectando...</span>
-    </div>
-  </aside>
-
-  <!-- ═══ Main Content ════════════════════════════════════════════════════ -->
-  <main class="main-content">
-
-    <!-- Header -->
-    <header class="top-bar">
-      <div class="top-bar-left">
-        <button class="menu-toggle" id="menu-toggle" onclick="toggleSidebar()">☰</button>
-        <h1 class="page-title" id="page-title">Dashboard</h1>
-      </div>
-      <div class="top-bar-right">
-        <div class="system-time" id="system-time">--:--:--</div>
-        <button class="btn btn-primary" id="btn-new-event" onclick="openEventModal()">
-          <span>+</span> Nuevo Evento
-        </button>
-      </div>
-    </header>
-
-    <!-- ── VIEW: DASHBOARD ─────────────────────────────────────────── -->
-    <section class="view active" id="view-dashboard">
-
-      <!-- Stats row -->
-      <div class="stats-row">
-        <div class="stat-card" id="stat-total">
-          <div class="stat-icon">📅</div>
-          <div class="stat-body">
-            <div class="stat-value" id="stat-total-val">0</div>
-            <div class="stat-label">Total Eventos</div>
-          </div>
-        </div>
-        <div class="stat-card success" id="stat-active">
-          <div class="stat-icon">✅</div>
-          <div class="stat-body">
-            <div class="stat-value" id="stat-active-val">0</div>
-            <div class="stat-label">Activos</div>
-          </div>
-        </div>
-        <div class="stat-card warning" id="stat-paused">
-          <div class="stat-icon">⏸</div>
-          <div class="stat-body">
-            <div class="stat-value" id="stat-paused-val">0</div>
-            <div class="stat-label">Pausados</div>
-          </div>
-        </div>
-        <div class="stat-card info" id="stat-runs">
-          <div class="stat-icon">⚡</div>
-          <div class="stat-body">
-            <div class="stat-value" id="stat-runs-val">0</div>
-            <div class="stat-label">Ejecuciones</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Quick overview of events -->
-      <div class="section-header">
-        <h2>Próximas Tareas</h2>
-        <button class="btn btn-ghost btn-sm" onclick="switchView('events')">Ver todas →</button>
-      </div>
-
-      <div class="events-grid" id="dashboard-events-grid">
-        <div class="empty-state" id="dashboard-empty">
-          <div class="empty-icon">🚀</div>
-          <h3>Sin eventos todavía</h3>
-          <p>Crea tu primer evento para empezar a automatizar</p>
-          <button class="btn btn-primary" onclick="openEventModal()">+ Crear evento</button>
-        </div>
-      </div>
-
-      <!-- Mini log tail -->
-      <div class="section-header" style="margin-top: 2rem;">
-        <h2>Log Reciente</h2>
-        <button class="btn btn-ghost btn-sm" onclick="switchView('logs')">Ver todo →</button>
-      </div>
-      <div class="mini-log" id="mini-log"></div>
-    </section>
-
-    <!-- ── VIEW: EVENTS ────────────────────────────────────────────── -->
-    <section class="view" id="view-events">
-      <div class="section-header">
-        <div class="search-bar">
-          <span class="search-icon">🔍</span>
-          <input type="text" id="search-input" placeholder="Buscar eventos..." oninput="filterEvents()" />
-        </div>
-        <div class="filter-btns">
-          <button class="filter-btn active" data-filter="all" onclick="setFilter('all', this)">Todos</button>
-          <button class="filter-btn" data-filter="active" onclick="setFilter('active', this)">Activos</button>
-          <button class="filter-btn" data-filter="paused" onclick="setFilter('paused', this)">Pausados</button>
-        </div>
-      </div>
-
-      <div class="events-list" id="events-list">
-        <div class="empty-state" id="events-empty">
-          <div class="empty-icon">📅</div>
-          <h3>No hay eventos</h3>
-          <p>Crea tu primer evento programado</p>
-          <button class="btn btn-primary" onclick="openEventModal()">+ Nuevo evento</button>
-        </div>
-      </div>
-    </section>
-
-    <!-- ── VIEW: LOGS ──────────────────────────────────────────────── -->
-    <section class="view" id="view-logs">
-      <div class="section-header">
-        <div class="log-status">
-          <div class="pulse-dot"></div>
-          <span>En vivo</span>
-        </div>
-        <div style="display:flex;gap:.5rem;">
-          <button class="btn btn-ghost btn-sm" onclick="toggleAutoScroll()" id="btn-autoscroll">📌 Auto-scroll ON</button>
-          <button class="btn btn-danger btn-sm" onclick="clearLogs()">🗑 Limpiar</button>
-        </div>
-      </div>
-      <div class="log-terminal" id="log-terminal">
-        <div class="log-placeholder">Esperando logs en tiempo real...</div>
-      </div>
-    </section>
-
-  </main>
-
-  <!-- ═══ EVENT MODAL ═════════════════════════════════════════════════════ -->
-  <div class="modal-overlay" id="event-modal" onclick="handleOverlayClick(event)">
-    <div class="modal" id="event-modal-box">
-      <div class="modal-header">
-        <h2 class="modal-title" id="modal-title">Nuevo Evento</h2>
-        <button class="modal-close" onclick="closeEventModal()">✕</button>
-      </div>
-
-      <div class="modal-body">
-        <form id="event-form" onsubmit="submitEvent(event)">
-          <input type="hidden" id="event-id" value="" />
-
-          <!-- Name & color -->
-          <div class="form-row">
-            <div class="form-group flex-1">
-              <label for="event-name">Nombre del evento *</label>
-              <input type="text" id="event-name" placeholder="Ej: Recordatorio hidratación" required />
-            </div>
-            <div class="form-group color-group">
-              <label for="event-color">Color</label>
-              <input type="color" id="event-color" value="#6c63ff" />
-            </div>
-          </div>
-
-          <!-- Description -->
-          <div class="form-group">
-            <label for="event-desc">Descripción</label>
-            <input type="text" id="event-desc" placeholder="Descripción opcional..." />
-          </div>
-
-          <!-- Tags -->
-          <div class="form-group">
-            <label for="event-tags">Etiquetas (separadas por coma)</label>
-            <input type="text" id="event-tags" placeholder="trabajo, salud, personal..." />
-          </div>
-
-          <!-- Action Type -->
-          <div class="form-row">
-            <div class="form-group flex-1">
-              <label for="event-action-type">Tipo de acción</label>
-              <select id="event-action-type" onchange="updateActionPlaceholder()">
-                <option value="log">📝 Log / Mensaje</option>
-                <option value="reminder">🔔 Recordatorio</option>
-                <option value="shell">💻 Comando Shell</option>
-                <option value="http">🌐 Petición HTTP</option>
-              </select>
-            </div>
-          </div>
-
-          <!-- Action -->
-          <div class="form-group">
-            <label for="event-action">Acción *</label>
-            <input type="text" id="event-action" placeholder="Mensaje o comando a ejecutar..." required />
-          </div>
-
-          <!-- ── Schedule ──────────────────────────────────── -->
-          <div class="schedule-section">
-            <div class="section-label">Programación</div>
-
-            <div class="schedule-types">
-              <button type="button" class="sched-type active" data-type="daily" onclick="setScheduleType('daily', this)">
-                <span>☀️</span> Cada día
-              </button>
-              <button type="button" class="sched-type" data-type="weekly" onclick="setScheduleType('weekly', this)">
-                <span>📆</span> Semanal
-              </button>
-              <button type="button" class="sched-type" data-type="interval" onclick="setScheduleType('interval', this)">
-                <span>🔄</span> Intervalo
-              </button>
-              <button type="button" class="sched-type" data-type="once" onclick="setScheduleType('once', this)">
-                <span>1️⃣</span> Una vez
-              </button>
-              <button type="button" class="sched-type" data-type="hourly" onclick="setScheduleType('hourly', this)">
-                <span>⏰</span> Cada hora
-              </button>
-            </div>
-
-            <!-- Daily / once / weekly time picker -->
-            <div class="sched-options" id="sched-time-group">
-              <div class="form-group">
-                <label for="sched-time">Hora de ejecución</label>
-                <input type="time" id="sched-time" value="08:00" />
-              </div>
-            </div>
-
-            <!-- Weekly days -->
-            <div class="sched-options hidden" id="sched-days-group">
-              <label>Días de la semana</label>
-              <div class="days-selector">
-                <button type="button" class="day-btn" data-day="lun">L</button>
-                <button type="button" class="day-btn" data-day="mar">M</button>
-                <button type="button" class="day-btn" data-day="mie">X</button>
-                <button type="button" class="day-btn" data-day="jue">J</button>
-                <button type="button" class="day-btn" data-day="vie">V</button>
-                <button type="button" class="day-btn" data-day="sab">S</button>
-                <button type="button" class="day-btn" data-day="dom">D</button>
-              </div>
-            </div>
-
-            <!-- Interval picker -->
-            <div class="sched-options hidden" id="sched-interval-group">
-              <div class="form-row">
-                <div class="form-group flex-1">
-                  <label for="sched-interval">Cada</label>
-                  <input type="number" id="sched-interval" min="1" value="30" />
-                </div>
-                <div class="form-group flex-1">
-                  <label for="sched-interval-unit">Unidad</label>
-                  <select id="sched-interval-unit">
-                    <option value="minutes">Minutos</option>
-                    <option value="hours">Horas</option>
-                    <option value="seconds">Segundos</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            <!-- Cron expression preview -->
-            <div class="cron-preview" id="cron-preview">
-              <span class="cron-label">Expresión cron:</span>
-              <code id="cron-expr">--</code>
-            </div>
-          </div>
-        </form>
-      </div>
-
-      <div class="modal-footer">
-        <button type="button" class="btn btn-ghost" onclick="closeEventModal()">Cancelar</button>
-        <button type="submit" form="event-form" class="btn btn-primary" id="save-btn">
-          <span id="save-btn-text">Guardar Evento</span>
-        </button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ═══ CONFIRM MODAL ══════════════════════════════════════════════════ -->
-  <div class="modal-overlay" id="confirm-modal" onclick="handleConfirmOverlay(event)">
-    <div class="modal modal-sm" id="confirm-modal-box">
-      <div class="modal-header">
-        <h2 class="modal-title" id="confirm-title">Confirmar</h2>
-        <button class="modal-close" onclick="closeConfirmModal()">✕</button>
-      </div>
-      <div class="modal-body">
-        <p id="confirm-message"></p>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-ghost" onclick="closeConfirmModal()">Cancelar</button>
-        <button class="btn btn-danger" id="confirm-ok-btn" onclick="confirmAction()">Eliminar</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Toast notifications -->
-  <div class="toast-container" id="toast-container"></div>
-
-  <script src="app.js"></script>
+    <script src="app.js"></script>
 </body>
 </html>

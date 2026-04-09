@@ -2,177 +2,136 @@ const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
 const path = require('path');
+const { exec } = require('child_process');
 const fs = require('fs');
-const { loadEvents, saveEvents, createEvent, updateEvent, deleteEvent } = require('./eventStore');
-const { initScheduler, reloadScheduler, getSchedulerStatus } = require('./scheduler');
 
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-const PORT = process.env.PORT || 3000;
-const LOG_FILE = path.join(__dirname, 'logs.txt');
+const PORT = 3000;
+const DATA_FILE = path.join(__dirname, 'events.json');
 
-// ─── WebSocket clients ────────────────────────────────────────────────────────
-const clients = new Set();
-
-wss.on('connection', (ws) => {
-  clients.add(ws);
-  ws.on('close', () => clients.delete(ws));
-  // Send last 100 log lines on connect
-  try {
-    if (fs.existsSync(LOG_FILE)) {
-      const lines = fs.readFileSync(LOG_FILE, 'utf8').split('\n').filter(Boolean).slice(-100);
-      ws.send(JSON.stringify({ type: 'log_history', lines }));
-    }
-  } catch (_) {}
-});
-
-// ─── Logger ───────────────────────────────────────────────────────────────────
-function log(message, level = 'INFO') {
-  const timestamp = new Date().toLocaleString('es-MX', { hour12: false });
-  const entry = `[${timestamp}] [${level}] ${message}`;
-  
-  // Console
-  const colors = { INFO: '\x1b[36m', SUCCESS: '\x1b[32m', ERROR: '\x1b[31m', WARN: '\x1b[33m', EVENT: '\x1b[35m' };
-  console.log(`${colors[level] || ''}${entry}\x1b[0m`);
-  
-  // File
-  fs.appendFileSync(LOG_FILE, entry + '\n');
-  
-  // Broadcast to all WebSocket clients
-  const payload = JSON.stringify({ type: 'log', entry, level, timestamp });
-  clients.forEach(ws => {
-    if (ws.readyState === WebSocket.OPEN) ws.send(payload);
-  });
+// ─── UTILS: Minimal Storage ──────────────────────────────────────────────────
+function loadEvents() {
+    if (!fs.existsSync(DATA_FILE)) fs.writeFileSync(DATA_FILE, '[]');
+    try {
+        return JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+    } catch { return []; }
+}
+function saveEvents(events) {
+    fs.writeFileSync(DATA_FILE, JSON.stringify(events, null, 2));
 }
 
-// Expose log globally for scheduler
-global.log = log;
+// ─── BROADCAST LOG ──────────────────────────────────────────────────────────
+function log(msg, type = 'INFO') {
+    const timestamp = new Date().toLocaleTimeString('es-MX', { hour12: false });
+    const entry = `[${timestamp}] [${type}] ${msg}`;
+    console.log(entry);
+    
+    const payload = JSON.stringify({ type: 'log', message: entry, level: type });
+    wss.clients.forEach(client => {
+        if (client.readyState === WebSocket.OPEN) client.send(payload);
+    });
+}
 
-// ─── Middleware ───────────────────────────────────────────────────────────────
+// ─── HEARTBEAT ENGINE ────────────────────────────────────────────────────────
+// This is the core. It runs every 10 seconds.
+function startHeartbeat() {
+    log('Iniciando motor de latidos (10s)...', 'SUCCESS');
+    
+    setInterval(() => {
+        const now = new Date();
+        const curH = now.getHours();
+        const curM = now.getMinutes();
+        const curD = now.getDay();
+        
+        // Let user know we are alive
+        if (now.getSeconds() < 10) {
+            log('Latido: Servidor activo y monitoreando.', 'INFO');
+        }
+
+        const events = loadEvents();
+        events.forEach(ev => {
+            if (!ev.active) return;
+            
+            if (shouldRun(ev, now)) {
+                executeAction(ev);
+            }
+        });
+    }, 10000); // 10 second check
+}
+
+function shouldRun(ev, now) {
+    const [h, m] = ev.time.split(':').map(Number);
+    const isMinuteMatch = now.getHours() === h && now.getMinutes() === m;
+    
+    // Day match (0=Sun, 1=Mon, etc)
+    const isDayMatch = ev.days.includes(now.getDay());
+    
+    // Cooldown: ensure we don't run twice in the same minute
+    const lastRun = ev.lastRunMinute || -1;
+    const currentMinuteKey = now.getHours() * 60 + now.getMinutes();
+    
+    if (isMinuteMatch && isDayMatch && lastRun !== currentMinuteKey) {
+        ev.lastRunMinute = currentMinuteKey;
+        return true;
+    }
+    return false;
+}
+
+function executeAction(ev) {
+    log(`EJECUTANDO TAREA: "${ev.name}"`, 'EVENT');
+    
+    // 1. Termux Notification (Requires Termux:API)
+    const cmd = `termux-notification -t "TaskFlow V2" -c "${ev.name}: ${ev.action}"`;
+    exec(cmd, (err) => {
+        if (err) log('Error al lanzar notificación (¿Tienes Termux:API?): ' + err.message, 'WARN');
+    });
+
+    // 2. Local action record
+    const events = loadEvents();
+    const index = events.findIndex(e => e.id === ev.id);
+    if (index !== -1) {
+        events[index].lastRunMinute = ev.lastRunMinute;
+        events[index].runCount = (events[index].runCount || 0) + 1;
+        saveEvents(events);
+    }
+}
+
+// ─── API ─────────────────────────────────────────────────────────────────────
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ─── API Routes ───────────────────────────────────────────────────────────────
+app.get('/api/events', (req, res) => res.json(loadEvents()));
 
-// GET all events
-app.get('/api/events', (req, res) => {
-  res.json({ success: true, events: loadEvents() });
-});
-
-// GET single event
-app.get('/api/events/:id', (req, res) => {
-  const events = loadEvents();
-  const event = events.find(e => e.id === req.params.id);
-  if (!event) return res.status(404).json({ success: false, error: 'Evento no encontrado' });
-  res.json({ success: true, event });
-});
-
-// POST create event
 app.post('/api/events', (req, res) => {
-  try {
-    const event = createEvent(req.body);
-    reloadScheduler();
-    log(`Evento creado: "${event.name}" [${event.id}]`, 'SUCCESS');
-    res.json({ success: true, event });
-  } catch (err) {
-    log(`Error al crear evento: ${err.message}`, 'ERROR');
-    res.status(400).json({ success: false, error: err.message });
-  }
-});
-
-// PUT update event
-app.put('/api/events/:id', (req, res) => {
-  try {
-    const event = updateEvent(req.params.id, req.body);
-    reloadScheduler();
-    log(`Evento actualizado: "${event.name}" [${event.id}]`, 'SUCCESS');
-    res.json({ success: true, event });
-  } catch (err) {
-    log(`Error al actualizar evento: ${err.message}`, 'ERROR');
-    res.status(400).json({ success: false, error: err.message });
-  }
-});
-
-// DELETE event
-app.delete('/api/events/:id', (req, res) => {
-  try {
-    const event = deleteEvent(req.params.id);
-    reloadScheduler();
-    log(`Evento eliminado: "${event.name}" [${event.id}]`, 'WARN');
-    res.json({ success: true });
-  } catch (err) {
-    log(`Error al eliminar evento: ${err.message}`, 'ERROR');
-    res.status(400).json({ success: false, error: err.message });
-  }
-});
-
-// Toggle event active/paused
-app.patch('/api/events/:id/toggle', (req, res) => {
-  try {
     const events = loadEvents();
-    const event = events.find(e => e.id === req.params.id);
-    if (!event) throw new Error('Evento no encontrado');
-    event.active = !event.active;
+    const newEvent = {
+        id: Date.now().toString(),
+        name: req.body.name || 'Tarea Nueva',
+        action: req.body.action || 'Sin acción',
+        time: req.body.time || '08:00',
+        days: req.body.days || [0,1,2,3,4,5,6], // All days default
+        active: true,
+        runCount: 0
+    };
+    events.push(newEvent);
     saveEvents(events);
-    reloadScheduler();
-    log(`Evento ${event.active ? 'activado' : 'pausado'}: "${event.name}"`, event.active ? 'SUCCESS' : 'WARN');
-    res.json({ success: true, event });
-  } catch (err) {
-    res.status(400).json({ success: false, error: err.message });
-  }
+    log(`Tarea Creada: ${newEvent.name} a las ${newEvent.time}`, 'SUCCESS');
+    res.json(newEvent);
 });
 
-// Execute event manually
-app.post('/api/events/:id/run', (req, res) => {
-  try {
-    const events = loadEvents();
-    const event = events.find(e => e.id === req.params.id);
-    if (!event) throw new Error('Evento no encontrado');
-    log(`▶ Ejecución manual: "${event.name}"`, 'EVENT');
-    executeEvent(event);
-    res.json({ success: true, message: 'Evento ejecutado' });
-  } catch (err) {
-    res.status(400).json({ success: false, error: err.message });
-  }
+app.post('/api/test-notification', (req, res) => {
+    log('Lanzando prueba de notificación Termux...', 'INFO');
+    exec('termux-notification -t "Prueba" -c "Si ves esto, todo funciona"', (err) => {
+        if (err) return res.json({ success: false, error: err.message });
+        res.json({ success: true });
+    });
 });
 
-// GET scheduler status
-app.get('/api/status', (req, res) => {
-  const events = loadEvents();
-  const status = getSchedulerStatus();
-  res.json({
-    success: true,
-    uptime: process.uptime(),
-    totalEvents: events.length,
-    activeEvents: events.filter(e => e.active).length,
-    ...status
-  });
-});
-
-// GET logs
-app.get('/api/logs', (req, res) => {
-  try {
-    const limit = parseInt(req.query.limit) || 200;
-    const content = fs.existsSync(LOG_FILE) ? fs.readFileSync(LOG_FILE, 'utf8') : '';
-    const lines = content.split('\n').filter(Boolean).slice(-limit);
-    res.json({ success: true, lines });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-// Clear logs
-app.delete('/api/logs', (req, res) => {
-  fs.writeFileSync(LOG_FILE, '');
-  log('Logs limpiados', 'INFO');
-  res.json({ success: true });
-});
-
-// ─── Start ────────────────────────────────────────────────────────────────────
+// ─── BOOT ────────────────────────────────────────────────────────────────────
 server.listen(PORT, () => {
-  log(`🚀 Servidor iniciado en http://localhost:${PORT}`, 'SUCCESS');
-  log(`📅 Sistema de tareas programadas listo`, 'INFO');
-  initScheduler();
+    log(`V2 Iniciada en http://localhost:${PORT}`, 'SUCCESS');
+    startHeartbeat();
 });
