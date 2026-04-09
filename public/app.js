@@ -145,6 +145,8 @@ function switchView(view) {
   // Close sidebar on mobile
   if (window.innerWidth <= 768) {
     document.getElementById('sidebar').classList.remove('open');
+    const overlay = document.getElementById('sidebar-overlay');
+    if (overlay) overlay.classList.remove('open');
   }
 }
 
@@ -155,6 +157,8 @@ document.querySelectorAll('.nav-item').forEach(btn => {
 
 function toggleSidebar() {
   document.getElementById('sidebar').classList.toggle('open');
+  const overlay = document.getElementById('sidebar-overlay');
+  if (overlay) overlay.classList.toggle('open');
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
