@@ -23,6 +23,39 @@ p { color: #94a3b8; font-size: 0.9rem; }
 .status-on { color: #22c55e; font-weight: bold; }
 .status-off { color: #ef4444; font-weight: bold; }
 
+/* Clock Styles */
+.clock-card {
+    background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+    padding: 2rem;
+    border-radius: 16px;
+    text-align: center;
+    border: 1px solid #334155;
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+    transition: transform 0.3s ease;
+}
+
+.clock-card:hover {
+    transform: translateY(-5px);
+    border-color: #38bdf8;
+}
+
+.clock-time {
+    font-size: 3.5rem;
+    font-weight: 800;
+    color: #38bdf8;
+    line-height: 1;
+    margin-bottom: 0.5rem;
+    font-variant-numeric: tabular-nums;
+    text-shadow: 0 0 20px rgba(56, 189, 248, 0.2);
+}
+
+.clock-date {
+    font-size: 1.1rem;
+    color: #94a3b8;
+    text-transform: capitalize;
+    letter-spacing: 1px;
+}
+
 .log-window {
     background: #020617;
     border: 1px solid #1e293b;

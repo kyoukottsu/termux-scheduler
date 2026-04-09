@@ -1,5 +1,33 @@
 const logWindow = document.getElementById('log-window');
 const statusSpan = document.getElementById('status');
+const clockTime = document.getElementById('clock-time');
+const clockDate = document.getElementById('clock-date');
+
+// Clock logic
+function updateClock() {
+    const now = new Date();
+    
+    // Time format: HH:MM:SS
+    clockTime.textContent = now.toLocaleTimeString('es-ES', { 
+        hour: '2-digit', 
+        minute: '2-digit', 
+        second: '2-digit',
+        hour12: false 
+    });
+
+    // Date format: Day, DD de Month
+    const dateOptions = { 
+        weekday: 'long', 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric' 
+    };
+    clockDate.textContent = now.toLocaleDateString('es-ES', dateOptions);
+}
+
+// Initial call and interval
+updateClock();
+setInterval(updateClock, 1000);
 
 // WebSocket connection
 const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
