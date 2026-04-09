@@ -83,10 +83,10 @@ function shouldRun(ev, now) {
 function executeAction(ev) {
     log(`EJECUTANDO TAREA: "${ev.name}"`, 'EVENT');
     
-    // 1. Termux Notification (Requires Termux:API)
-    const cmd = `termux-notification -t "TaskFlow V2" -c "${ev.name}: ${ev.action}"`;
+    // 1. Termux Notification & Vibration (Requires Termux:API)
+    const cmd = `termux-vibrate -d 500 && termux-notification -t "TaskFlow V2" -c "${ev.name}: ${ev.action}"`;
     exec(cmd, (err) => {
-        if (err) log('Error al lanzar notificación (¿Tienes Termux:API?): ' + err.message, 'WARN');
+        if (err) log('Error al ejecutar acción (¿Tienes Termux:API?): ' + err.message, 'WARN');
     });
 
     // 2. Local action record
@@ -123,8 +123,8 @@ app.post('/api/events', (req, res) => {
 });
 
 app.post('/api/test-notification', (req, res) => {
-    log('Lanzando prueba de notificación Termux...', 'INFO');
-    exec('termux-notification -t "Prueba" -c "Si ves esto, todo funciona"', (err) => {
+    log('Lanzando prueba de notificación y vibración...', 'INFO');
+    exec('termux-vibrate -d 300 && termux-notification -t "Prueba" -c "Si ves esto y vibró, todo funciona"', (err) => {
         if (err) return res.json({ success: false, error: err.message });
         res.json({ success: true });
     });
