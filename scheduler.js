@@ -1,59 +1,116 @@
-const cron = require('node-cron');
-const { loadEvents, recordRun } = require('./eventStore');
+const { loadEvents, recordRun, saveEvents } = require('./eventStore');
+const { exec } = require('child_process');
+const https = require('https');
+const http = require('http');
 
-// ─── Active scheduled tasks ────────────────────────────────────────────────
-let activeTasks = new Map(); // id -> cron task
+// ─── Internal State ────────────────────────────────────────────────────────
+let heartbeatInterval = null;
 let schedulerStartTime = null;
+let lastCheckMinute = -1; // To ensure we only process "once per minute" logic once
 
-// ─── Build cron expression from schedule object ────────────────────────────
-function buildCronExpression(schedule) {
-  const { type, time, days, interval, intervalUnit } = schedule;
+// Map to track last execution time/minute to avoid double triggers
+// id -> timestamp of last execution
+const lastExecutionMap = new Map();
 
-  switch (type) {
-    case 'daily': {
-      // Every day at HH:MM
-      const [h, m] = time.split(':').map(Number);
-      return `${m} ${h} * * *`;
-    }
-    case 'weekly': {
-      // Specific days of week at HH:MM
-      const [h, m] = time.split(':').map(Number);
-      const dayMap = { 'dom': 0, 'lun': 1, 'mar': 2, 'mie': 3, 'jue': 4, 'vie': 5, 'sab': 6 };
-      const dayNums = days.map(d => dayMap[d] ?? d).join(',');
-      return `${m} ${h} * * ${dayNums}`;
-    }
-    case 'interval': {
-      // Every N minutes/hours
-      if (intervalUnit === 'minutes') {
-        return `*/${interval} * * * *`;
-      } else if (intervalUnit === 'hours') {
-        return `0 */${interval} * * *`;
-      } else if (intervalUnit === 'seconds') {
-        return `*/${interval} * * * * *`; // node-cron supports seconds
+/**
+ * Main Heartbeat Loop
+ * Runs every 30 seconds to check if any tasks are due.
+ */
+function heartbeat() {
+  const log = global.log || console.log;
+  const now = new Date();
+  const currentMinute = now.getMinutes();
+  const currentHour = now.getHours();
+  const currentDay = now.getDay(); // 0 (Sun) - 6 (Sat)
+  
+  // Format current time for logging
+  const timeStr = now.toLocaleTimeString('es-MX', { hour12: false });
+  
+  // DEBUG LOG: Heartbeat indicator
+  log(`[DEBUG] Latido del sistema (${timeStr}) - Revisando tareas...`, 'INFO');
+
+  const events = loadEvents();
+  let checked = 0;
+  let activeCount = 0;
+
+  events.forEach(event => {
+    if (!event.active) return;
+    activeCount++;
+
+    try {
+      if (shouldEventRun(event, now)) {
+        log(`[DEBUG] ⚡ Tarea "${event.name}" identificada como DEBIDA. Ejecutando ahora.`, 'EVENT');
+        executeEvent(event);
+        lastExecutionMap.set(event.id, now.getTime());
       }
-      break;
+    } catch (err) {
+      log(`[ERROR] Error al evaluar tarea "${event.name}": ${err.message}`, 'ERROR');
     }
-    case 'once': {
-      // Run once at specific time today/date
-      const [h, m] = time.split(':').map(Number);
-      return `${m} ${h} * * *`; // Will be destroyed after first run
+    checked++;
+  });
+}
+
+/**
+ * Logic to determine if an event should run right now
+ */
+function shouldEventRun(event, now) {
+  const log = global.log || console.log;
+  const { schedule } = event;
+  const lastExec = lastExecutionMap.get(event.id) || 0;
+  const msSinceLastRun = now.getTime() - lastExec;
+
+  // 1. Minimum cooldown: Never run the same task more than once every 50 seconds 
+  // (to avoid double-firing within the same minute mark due to heartbeat frequency)
+  if (msSinceLastRun < 50000) return false;
+
+  const [targetH, targetM] = (schedule.time || "00:00").split(':').map(Number);
+  const currentH = now.getHours();
+  const currentM = now.getMinutes();
+  const currentD = now.getDay();
+
+  switch (schedule.type) {
+    case 'daily':
+    case 'once':
+      // Matches hour and minute
+      return currentH === targetH && currentM === targetM;
+
+    case 'weekly': {
+      const dayMap = { 'dom': 0, 'lun': 1, 'mar': 2, 'mie': 3, 'jue': 4, 'vie': 5, 'sab': 6 };
+      const isTargetDay = (schedule.days || []).some(d => dayMap[d] === currentD);
+      return isTargetDay && currentH === targetH && currentM === targetM;
     }
-    case 'hourly': {
-      return '0 * * * *';
+
+    case 'interval': {
+      // For intervals, we check if enough time has passed
+      let intervalMs = 0;
+      if (schedule.intervalUnit === 'minutes') intervalMs = schedule.interval * 60 * 1000;
+      else if (schedule.intervalUnit === 'hours') intervalMs = schedule.interval * 60 * 60 * 1000;
+      else if (schedule.intervalUnit === 'seconds') intervalMs = schedule.interval * 1000;
+      
+      // If never run (lastRun is null in DB), we use createdAt as base or just run it now
+      const baseTime = event.lastRun ? new Date(event.lastRun).getTime() : new Date(event.createdAt).getTime();
+      return (now.getTime() - baseTime) >= intervalMs;
     }
-    case 'minutely': {
-      return '* * * * *';
-    }
+
+    case 'hourly':
+      return currentM === 0; // Trigger at the start of every hour
+
+    case 'minutely':
+      return true; // Trigger every heartbeat minute (cooldown handles the 1-min spacing)
+
     default:
-      throw new Error(`Tipo de programación desconocido: ${type}`);
+      return false;
   }
 }
 
-// ─── Execute a single event ────────────────────────────────────────────────
+/**
+ * Execute a single event action
+ */
 function executeEvent(event) {
-  const log = global.log;
+  const log = global.log || console.log;
+  
   try {
-    log(`⚡ Ejecutando evento: "${event.name}"`, 'EVENT');
+    log(`⚡ Ejecutando: "${event.name}" (${event.actionType})`, 'EVENT');
     
     switch (event.actionType) {
       case 'log':
@@ -61,29 +118,19 @@ function executeEvent(event) {
         break;
         
       case 'http': {
-        // HTTP request action
-        const https = require('https');
-        const http = require('http');
         const url = new URL(event.action);
         const client = url.protocol === 'https:' ? https : http;
         const req = client.get(event.action, (res) => {
-          log(`🌐 [${event.name}] HTTP ${res.statusCode} → ${event.action}`, 'SUCCESS');
+          log(`🌐 [${event.name}] HTTP ${res.statusCode}`, 'SUCCESS');
         });
-        req.on('error', (err) => {
-          log(`🌐 [${event.name}] HTTP Error: ${err.message}`, 'ERROR');
-        });
+        req.on('error', (err) => log(`🌐 [${event.name}] Error: ${err.message}`, 'ERROR'));
         break;
       }
         
       case 'shell': {
-        // Shell command
-        const { exec } = require('child_process');
         exec(event.action, (err, stdout, stderr) => {
-          if (err) {
-            log(`💻 [${event.name}] Error: ${err.message}`, 'ERROR');
-          } else {
-            log(`💻 [${event.name}] OK: ${(stdout || '').trim()}`, 'SUCCESS');
-          }
+          if (err) log(`💻 [${event.name}] Error: ${err.message}`, 'ERROR');
+          else log(`💻 [${event.name}] OK: ${(stdout || '').trim()}`, 'SUCCESS');
         });
         break;
       }
@@ -91,78 +138,56 @@ function executeEvent(event) {
       case 'reminder':
         log(`🔔 RECORDATORIO: ${event.action}`, 'WARN');
         break;
-        
-      default:
-        log(`[${event.name}] ${event.action}`, 'INFO');
     }
     
     recordRun(event.id);
     
-    // Auto-disable "once" events after first run
+    // Auto-disable "once" events
     if (event.schedule.type === 'once') {
-      const { saveEvents, loadEvents } = require('./eventStore');
       const events = loadEvents();
       const ev = events.find(e => e.id === event.id);
       if (ev) {
         ev.active = false;
         saveEvents(events);
-        reloadScheduler();
-        log(`🔕 Evento único "${event.name}" desactivado tras ejecución`, 'INFO');
+        log(`🔕 Evento único "${event.name}" completado y desactivado.`, 'INFO');
       }
     }
     
   } catch (err) {
-    log(`❌ Error ejecutando "${event.name}": ${err.message}`, 'ERROR');
+    log(`❌ Fallo crítico en "${event.name}": ${err.message}`, 'ERROR');
   }
 }
 
-// ─── (Re)load all scheduled tasks ─────────────────────────────────────────
-function reloadScheduler() {
-  const log = global.log;
+// ─── Public API ────────────────────────────────────────────────────────────
+
+function initScheduler() {
+  const log = global.log || console.log;
+  schedulerStartTime = new Date();
   
-  // Stop all current tasks
-  activeTasks.forEach((task, id) => {
-    task.stop();
-  });
-  activeTasks.clear();
+  if (heartbeatInterval) clearInterval(heartbeatInterval);
   
-  const events = loadEvents();
-  let scheduled = 0;
+  // Start heartbeat every 30 seconds
+  heartbeatInterval = setInterval(heartbeat, 30000);
   
-  events.forEach(event => {
-    if (!event.active) return;
-    
-    try {
-      const cronExpr = buildCronExpression(event.schedule);
-      const useSeconds = event.schedule.type === 'interval' && event.schedule.intervalUnit === 'seconds';
-      
-      const task = cron.schedule(cronExpr, () => {
-        executeEvent(event);
-      }, {
-        scheduled: true
-      });
-      
-      activeTasks.set(event.id, task);
-      scheduled++;
-      
-    } catch (err) {
-      log(`⚠ No se pudo programar "${event.name}": ${err.message}`, 'WARN');
-    }
-  });
+  log('🚀 Motor de Scheduler (Heartbeat) iniciado.', 'SUCCESS');
+  log('   - Chequeo: Cada 30 segundos.', 'INFO');
+  log('   - Modo: Reloj interno directo.', 'INFO');
   
-  log(`♻ Scheduler recargado: ${scheduled}/${events.length} eventos activos`, 'INFO');
+  // Run once immediately
+  heartbeat();
 }
 
-// ─── Init ──────────────────────────────────────────────────────────────────
-function initScheduler() {
-  schedulerStartTime = new Date();
-  reloadScheduler();
+function reloadScheduler() {
+  const log = global.log || console.log;
+  log('♻ Recargando motor de tareas...', 'INFO');
+  // With heartbeat, reload implies just letting the next tick pick up the new JSON
 }
 
 function getSchedulerStatus() {
   return {
     schedulerUpSince: schedulerStartTime,
-    scheduledTasks: activeTasks.size,
+    activeTasks: loadEvents().filter(e => e.active).length,
+    mode: 'Manual Heartbeat (30s)'
   };
 }
 
