@@ -130,6 +130,28 @@ app.post('/api/test-notification', (req, res) => {
     });
 });
 
+app.patch('/api/events/:id', (req, res) => {
+    const events = loadEvents();
+    const index = events.findIndex(e => e.id === req.params.id);
+    if (index === -1) return res.status(404).send('Not found');
+    
+    events[index].active = !events[index].active;
+    saveEvents(events);
+    log(`Tarea "${events[index].name}" ${events[index].active ? 'Activada' : 'Desactivada'}`, 'INFO');
+    res.json(events[index]);
+});
+
+app.delete('/api/events/:id', (req, res) => {
+    let events = loadEvents();
+    const event = events.find(e => e.id === req.params.id);
+    if (!event) return res.status(404).send('Not found');
+    
+    events = events.filter(e => e.id !== req.params.id);
+    saveEvents(events);
+    log(`Tarea Borrada: "${event.name}"`, 'WARN');
+    res.json({ success: true });
+});
+
 // ─── BOOT ────────────────────────────────────────────────────────────────────
 server.listen(PORT, () => {
     log(`V2 Iniciada en http://localhost:${PORT}`, 'SUCCESS');

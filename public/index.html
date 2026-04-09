@@ -27,12 +27,38 @@
             <div id="log-window" class="log-window"></div>
         </section>
 
+        <section class="tasks-section">
+            <div class="section-header">
+                <h3>Tareas Programadas</h3>
+                <button onclick="loadTasks()" class="btn-refresh">🔄</button>
+            </div>
+            <div id="task-list" class="task-list">
+                <p class="empty-msg">No hay tareas programadas.</p>
+            </div>
+        </section>
+
         <section class="new-task">
             <h3>Programar Tarea Rápida</h3>
             <div class="form">
-                <input type="text" id="task-name" placeholder="Nombre (Ej: Beber agua)">
-                <input type="time" id="task-time" value="08:00">
-                <button onclick="addTask()" class="btn-add">+ Programar</button>
+                <div class="input-group">
+                    <input type="text" id="task-name" placeholder="Nombre (Ej: Beber agua)">
+                    <input type="time" id="task-time" value="08:00">
+                </div>
+                
+                <div class="days-selector">
+                    <p>Repetir los días:</p>
+                    <div class="days-grid">
+                        <label class="day-btn"><input type="checkbox" value="1" checked><span>L</span></label>
+                        <label class="day-btn"><input type="checkbox" value="2" checked><span>M</span></label>
+                        <label class="day-btn"><input type="checkbox" value="3" checked><span>X</span></label>
+                        <label class="day-btn"><input type="checkbox" value="4" checked><span>J</span></label>
+                        <label class="day-btn"><input type="checkbox" value="5" checked><span>V</span></label>
+                        <label class="day-btn"><input type="checkbox" value="6" checked><span>S</span></label>
+                        <label class="day-btn"><input type="checkbox" value="0" checked><span>D</span></label>
+                    </div>
+                </div>
+
+                <button onclick="addTask()" class="btn-add">🚀 Programar Tarea</button>
             </div>
         </section>
     </div>
