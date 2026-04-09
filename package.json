@@ -1,0 +1,22 @@
+{
+  "name": "termux-scheduler",
+  "version": "1.0.0",
+  "description": "Scheduler de tareas para Termux con panel web",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "node-cron": "^3.0.3",
+    "uuid": "^9.0.1",
+    "ws": "^8.16.0"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "keywords": ["termux", "scheduler", "cron", "automation"],
+  "author": "Gamaliel Perez",
+  "license": "MIT"
+}
