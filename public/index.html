@@ -18,6 +18,16 @@
             <div id="clock-date" class="clock-date">Cargando fecha...</div>
         </section>
 
+        <section class="config-section">
+            <div class="section-header">
+                <h3>⚙️ Configuración Global</h3>
+            </div>
+            <div class="form-row">
+                <input type="text" id="config-badge-id" placeholder="ID de Gafete (Ej: 5057358)">
+                <button onclick="saveGlobalConfig()" class="btn-save">Guardar</button>
+            </div>
+        </section>
+
         <section class="actions">
             <button onclick="testNotification()" class="btn-test">🔔 Probar Notificación</button>
         </section>
@@ -41,9 +51,14 @@
             <h3>Programar Tarea Rápida</h3>
             <div class="form">
                 <div class="input-group">
-                    <input type="text" id="task-name" placeholder="Nombre (Ej: Beber agua)">
-                    <input type="time" id="task-time" value="08:00">
+                    <input type="text" id="task-name" placeholder="Nombre (Ej: Entrada OXXO)">
+                    <select id="task-type" class="task-select" title="Seleccionar tipo de tarea automatizada">
+                        <option value="NOTIFICATION">🔔 Solo Recordatorio</option>
+                        <option value="PUNCH_IN">📥 Marcaje Entrada</option>
+                        <option value="PUNCH_OUT">📤 Marcaje Salida</option>
+                    </select>
                 </div>
+                <input type="time" id="task-time" value="08:00">
                 
                 <div class="days-selector">
                     <p>Repetir los días:</p>

@@ -13,6 +13,30 @@ function updateClock() {
 updateClock();
 setInterval(updateClock, 1000);
 
+// Global Configuration Logic
+async function loadConfig() {
+    try {
+        const res = await fetch('/api/config');
+        const config = await res.json();
+        document.getElementById('config-badge-id').value = config.badgeId;
+    } catch (err) {
+        console.error('Error cargando configuración:', err);
+    }
+}
+
+async function saveGlobalConfig() {
+    const badgeId = document.getElementById('config-badge-id').value;
+    if (!badgeId) return alert('El ID de Gafete no puede estar vacío');
+    
+    const res = await fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ badgeId })
+    });
+    
+    if (res.ok) alert('Configuración guardada correctamente');
+}
+
 // Task Management Logic
 async function loadTasks() {
     try {
@@ -30,12 +54,17 @@ function renderTasks(tasks) {
         return;
     }
 
+    const typeIcons = {
+        'NOTIFICATION': '🔔',
+        'PUNCH_IN': '📥',
+        'PUNCH_OUT': '📤'
+    };
     const dayNames = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
     
     taskList.innerHTML = tasks.map(task => `
         <div class="task-card ${task.active ? '' : 'inactive'}" id="task-${task.id}">
             <div class="task-info">
-                <h4>${task.name}</h4>
+                <h4>${typeIcons[task.type || 'NOTIFICATION']} ${task.name}</h4>
                 <p>⏰ ${task.time} | 📅 ${task.days.map(d => dayNames[d]).join(', ')}</p>
                 <p>🔄 Ejecuciones: ${task.runCount || 0}</p>
             </div>
@@ -52,10 +81,12 @@ function renderTasks(tasks) {
 async function addTask() {
     const nameInput = document.getElementById('task-name');
     const timeInput = document.getElementById('task-time');
+    const typeSelect = document.getElementById('task-type');
     const dayCheckboxes = document.querySelectorAll('.days-grid input:checked');
     
     const name = nameInput.value;
     const time = timeInput.value;
+    const type = typeSelect.value;
     const days = Array.from(dayCheckboxes).map(cb => parseInt(cb.value));
     
     if (!name) return alert('Ponle un nombre a la tarea');
@@ -64,7 +95,7 @@ async function addTask() {
     const res = await fetch('/api/events', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, time, days, action: 'Recordatorio automático' })
+        body: JSON.stringify({ name, time, type, days, action: 'Automatización programada' })
     });
     
     if (res.ok) {
@@ -86,6 +117,7 @@ async function deleteTask(id) {
 
 // Initial load
 loadTasks();
+loadConfig();
 
 // WebSocket connection
 const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
